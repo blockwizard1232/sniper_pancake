@@ -1,0 +1,18 @@
+{
+    "sourceFile": "bot.js",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1622738808991,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1622738808991,
+            "name": "Commit-0",
+            "content": "const ethers = require('ethers');\n\nconst addresses = {\n  WBNB: '<',\n  factory: '0xcA143Ce32Fe78f1f7019d7d551a6402fC5350c73',\n  router: '0x10ED43C718714eb63d5aA57B78B54704E256024E',\n  recipient: 'recipient of the profit here'\n}\n\n//First address of this mnemonic must have enough BNB to pay for tx fess\nconst mnemonic = 'your mnemonic here, to send';\n\nconst provider = new ethers.providers.WebSocketProvider('Ankr websocket url to mainnet');\nconst wallet = ethers.Wallet.fromMnemonic(mnemonic);\nconst account = wallet.connect(provider);\nconst factory = new ethers.Contract(\n  addresses.factory,\n  ['event PairCreated(address indexed token0, address indexed token1, address pair, uint)'],\n  account\n);\nconst router = new ethers.Contract(\n  addresses.router,\n  [\n    'function getAmountsOut(uint amountIn, address[] memory path) public view returns (uint[] memory amounts)',\n    'function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline) external returns (uint[] memory amounts)'\n  ],\n  account\n);\n\nconst wbnb = new ethers.Contract(\n  addresses.WBNB,\n  [\n    'function approve(address spender, uint amount) public returns(bool)',\n  ],\n  account\n);\n\nconst init = async () => {\n  const tx = await wbnb.approve(\n    router.address, \n    'replace by amount covering several trades'\n  );\n  const receipt = await tx.wait(); \n  console.log('Transaction receipt');\n  console.log(receipt);\n}\n\nfactory.on('PairCreated', async (token0, token1, pairAddress) => {\n  console.log(`\n    New pair detected\n    =================\n    token0: ${token0}\n    token1: ${token1}\n    pairAddress: ${pairAddress}\n  `);\n\n  //The quote currency needs to be WBNB (we will pay with WBNB)\n  let tokenIn, tokenOut;\n  if(token0 === addresses.WBNB) {\n    tokenIn = token0; \n    tokenOut = token1;\n  }\n\n  if(token1 == addresses.WBNB) {\n    tokenIn = token1; \n    tokenOut = token0;\n  }\n\n  //The quote currency is not WBNB\n  if(typeof tokenIn === 'undefined') {\n    return;\n  }\n\n  //We buy for 0.1 BNB of the new token\n  //ethers was originally created for Ethereum, both also work for BSC\n  //'ether' === 'bnb' on BSC\n  const amountIn = ethers.utils.parseUnits('0.1', 'ether');\n  const amounts = await router.getAmountsOut(amountIn, [tokenIn, tokenOut]);\n  //Our execution price will be a bit different, we need some flexbility\n  const amountOutMin = amounts[1].sub(amounts[1].div(10));\n  console.log(`\n    Buying new token\n    =================\n    tokenIn: ${amountIn.toString()} ${tokenIn} (WBNB)\n    tokenOut: ${amounOutMin.toString()} ${tokenOut}\n  `);\n  const tx = await router.swapExactTokensForTokens(\n    amountIn,\n    amountOutMin,\n    [tokenIn, tokenOut],\n    addresses.recipient,\n    Date.now() + 1000 * 60 * 10 //10 minutes\n  );\n  const receipt = await tx.wait(); \n  console.log('Transaction receipt');\n  console.log(receipt);\n});\n\ninit();\n"
+        }
+    ]
+}
